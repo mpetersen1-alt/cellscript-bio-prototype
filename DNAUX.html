@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cellscript Bio — Epigenetic Report</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        canvas:   '#FAF9F5',
+        ink:      '#111827',
+        graphite: '#4B5563',
+        hairline: '#E5E7EB',
+        mist:     '#F3F4F6',
+        forest:   '#1F5A45',
+        sagebg:   '#E6F4EA',
+        sagefg:   '#1B5E3F',
+        amberbg:  '#FEF3C7',
+        amberfg:  '#92400E',
+        stonebg:  '#F3F4F6',
+        stonefg:  '#6B7280'
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace']
+      },
+      boxShadow: {
+        card: '0 1px 2px rgba(17,24,39,.04), 0 1px 3px rgba(17,24,39,.05)',
+        lift: '0 4px 16px rgba(17,24,39,.07)'
+      }
+    }
+  }
+}
+</script>
+
+<style>
+  html { scroll-behavior: smooth; }
+  body { background:#FAF9F5; color:#4B5563; -webkit-font-smoothing:antialiased; }
+
+  .num { font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+
+  /* --- tab rail --- */
+  .tab-btn { transition: color .25s ease; }
+  .tab-btn[aria-selected="true"] { color:#111827; }
+  .tab-btn[aria-selected="false"]:hover { color:#111827; }
+  #tab-indicator { transition: transform .38s cubic-bezier(.4,0,.2,1), width .38s cubic-bezier(.4,0,.2,1); }
+
+  .panel { display:none; }
+  .panel.active { display:block; animation: panelIn .38s cubic-bezier(.16,1,.3,1) both; }
+  @keyframes panelIn { from { opacity:0; transform: translateY(8px);} to {opacity:1; transform:none;} }
+
+  /* --- accordion (grid-rows trick, no JS height math) --- */
+  .acc-body { display:grid; grid-template-rows: 0fr; transition: grid-template-rows .34s cubic-bezier(.4,0,.2,1); }
+  .acc.open .acc-body { grid-template-rows: 1fr; }
+  .acc-inner { overflow:hidden; }
+  .acc .chev { transition: transform .3s ease; }
+  .acc.open .chev { transform: rotate(180deg); }
+  .acc { transition: box-shadow .25s ease, border-color .25s ease; }
+  .acc.open { box-shadow: 0 4px 16px rgba(17,24,39,.07); border-color:#D1D5DB; }
+
+  /* --- gauge --- */
+  #paceArc { stroke-dasharray: 377; stroke-dashoffset: 377; transition: stroke-dashoffset 1.5s cubic-bezier(.2,.8,.2,1) .25s; }
+  #paceNeedle { transform-box: view-box; transform-origin: 160px 150px; transform: rotate(-90deg); transition: transform 1.5s cubic-bezier(.2,.8,.2,1) .25s; }
+
+  /* --- status bars --- */
+  .meter > span { width:0; transition: width 1.1s cubic-bezier(.2,.8,.2,1); }
+
+  /* --- protocol toggle --- */
+  .proto.on { background:#E6F4EA; border-color:#BBE0C8; color:#1B5E3F; }
+  .proto .on-label { display:none; }
+  .proto.on .on-label { display:inline; }
+  .proto.on .off-label { display:none; }
+  .proto.on i[data-lucide] { animation: pop .3s ease; }
+  @keyframes pop { 0%{transform:scale(.5)} 60%{transform:scale(1.18)} 100%{transform:scale(1)} }
+
+  /* --- protocol tray --- */
+  #tray { transform: translateY(140%); transition: transform .4s cubic-bezier(.16,1,.3,1); }
+  #tray.up { transform: translateY(0); }
+
+  :focus-visible { outline:2px solid #1F5A45; outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration:.001ms !important; transition-duration:.001ms !important; }
+  }
+</style>
+</head>
+
+<body class="font-sans">
+
+<!-- ══════════ TOP NAV ══════════ -->
+<header class="sticky top-0 z-40 bg-canvas/85 backdrop-blur-md border-b border-hairline">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3 shrink-0">
+      <div class="w-7 h-7 rounded-md bg-ink flex items-center justify-center">
+        <i data-lucide="dna" class="w-4 h-4 text-canvas"></i>
+      </div>
+      <span class="text-ink font-bold tracking-[0.18em] text-[13px] sm:text-sm">CELLSCRIPT BIO</span>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <span class="hidden md:inline-flex items-center gap-2 rounded-full border border-hairline bg-white px-3 py-1.5 text-[12.5px] text-graphite shadow-card">
+        <span class="w-1.5 h-1.5 rounded-full bg-forest"></span>
+        Sample: Adult Whole Blood <span class="text-stonefg">(Validated)</span>
+      </span>
+      <button class="rounded-full border border-hairline bg-white w-9 h-9 flex items-center justify-center text-graphite hover:text-ink hover:shadow-card transition" aria-label="Download report">
+        <i data-lucide="download" class="w-4 h-4"></i>
+      </button>
+      <div class="w-9 h-9 rounded-full bg-ink text-canvas text-[12px] font-semibold flex items-center justify-center">JR</div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-5 sm:px-8 pb-32">
+
+  <!-- ══════════ HERO ══════════ -->
+  <section class="pt-10 sm:pt-14">
+    <div class="flex flex-wrap items-end justify-between gap-4 mb-7">
+      <div>
+        <p class="text-[11px] font-semibold tracking-[0.16em] text-stonefg uppercase mb-2">Present biological snapshot</p>
+        <h1 class="text-ink text-[28px] sm:text-[34px] font-semibold tracking-[-0.02em] leading-tight">Good morning, Jordan</h1>
+        <p class="text-graphite text-[15px] mt-1.5">Methylome collected 12 Jun 2026 · 866,091 CpG sites read · EPIC v2 array</p>
+      </div>
+      <span class="md:hidden inline-flex items-center gap-2 rounded-full border border-hairline bg-white px-3 py-1.5 text-[12.5px] text-graphite">
+        <span class="w-1.5 h-1.5 rounded-full bg-forest"></span> Adult Whole Blood (Validated)
+      </span>
+    </div>
+
+    <div class="grid lg:grid-cols-5 gap-5">
+
+      <!-- Primary: DunedinPACE -->
+      <div class="lg:col-span-3 bg-white border border-hairline rounded-2xl shadow-card p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4 mb-2">
+          <div>
+            <h2 class="text-ink text-[17px] font-semibold tracking-tight">DunedinPACE</h2>
+            <p class="text-graphite text-[13.5px] mt-0.5">Pace of aging — biological years accrued per calendar year</p>
+          </div>
+          <span class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sagebg text-sagefg px-2.5 py-1 text-[11.5px] font-semibold">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Robust evidence
+          </span>
+        </div>
+
+        <div class="grid sm:grid-cols-[300px_1fr] gap-6 items-center mt-4">
+          <!-- arc gauge -->
+          <div class="relative mx-auto">
+            <svg viewBox="0 0 320 190" class="w-[280px] sm:w-[300px] h-auto" role="img" aria-label="Pace of aging gauge showing 0.82, slower than average">
+              <defs>
+                <linearGradient id="paceGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%"   stop-color="#1F5A45"/>
+                  <stop offset="45%"  stop-color="#5C9A7B"/>
+                  <stop offset="72%"  stop-color="#D9A62E"/>
+                  <stop offset="100%" stop-color="#B45309"/>
+                </linearGradient>
+              </defs>
+              <path d="M 40 150 A 120 120 0 0 1 280 150" fill="none" stroke="#EFEEE9" stroke-width="14" stroke-linecap="round"/>
+              <path id="paceArc" d="M 40 150 A 120 120 0 0 1 280 150" fill="none" stroke="url(#paceGrad)" stroke-width="14" stroke-linecap="round"/>
+              <g id="paceNeedle">
+                <line x1="160" y1="150" x2="160" y2="44" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="160" cy="30" r="8" fill="#FFFFFF" stroke="#111827" stroke-width="2.5"/>
+              </g>
+              <circle cx="160" cy="150" r="5.5" fill="#111827"/>
+              <text x="40"  y="176" text-anchor="middle" font-size="11" fill="#9CA3AF" font-family="IBM Plex Mono">0.60</text>
+              <text x="160" y="176" text-anchor="middle" font-size="11" fill="#9CA3AF" font-family="IBM Plex Mono">1.00</text>
+              <text x="280" y="176" text-anchor="middle" font-size="11" fill="#9CA3AF" font-family="IBM Plex Mono">1.40</text>
+            </svg>
+            <div class="absolute inset-x-0 bottom-[42px] text-center pointer-events-none">
+              <div id="paceValue" class="num text-ink text-[46px] font-light leading-none">0.00</div>
+            </div>
+          </div>
+
+          <!-- readout -->
+          <div>
+            <p class="text-ink text-[19px] font-medium leading-snug tracking-tight">Aging 18% slower<br class="hidden sm:block"> than the population average</p>
+            <p class="text-graphite text-[14px] leading-relaxed mt-3">
+              For every calendar year, your tissue accrues about <span class="font-mono text-ink">0.82</span> biological years.
+              A score of 1.00 is the reference pace measured in the Dunedin birth cohort.
+            </p>
+            <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-hairline pt-4">
+              <div>
+                <dt class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Percentile</dt>
+                <dd class="num text-ink text-[19px] font-medium mt-0.5">14th</dd>
+              </div>
+              <div>
+                <dt class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Change since Jan</dt>
+                <dd class="num text-sagefg text-[19px] font-medium mt-0.5 flex items-center gap-1">
+                  <i data-lucide="trending-down" class="w-4 h-4"></i> 0.06
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secondary: OMICmAge -->
+      <div class="lg:col-span-2 bg-white border border-hairline rounded-2xl shadow-card p-6 sm:p-8 flex flex-col">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-ink text-[17px] font-semibold tracking-tight">OMICmAge</h2>
+            <p class="text-graphite text-[13.5px] mt-0.5">Biological age estimate</p>
+          </div>
+          <span class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sagebg text-sagefg px-2.5 py-1 text-[11.5px] font-semibold">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Robust
+          </span>
+        </div>
+
+        <div class="mt-6 flex items-end gap-3">
+          <span id="bioAge" class="num text-ink text-[56px] font-light leading-none">0.0</span>
+          <span class="text-graphite text-[15px] pb-2">years</span>
+        </div>
+        <p class="text-graphite text-[14px] mt-2">Chronological age <span class="font-mono text-ink">36.0</span></p>
+
+        <div class="mt-6 space-y-3">
+          <div>
+            <div class="flex justify-between text-[12px] mb-1.5"><span class="text-graphite">Biological</span><span class="font-mono text-ink">31.4</span></div>
+            <div class="meter h-2 rounded-full bg-mist overflow-hidden"><span data-w="39" class="block h-full rounded-full bg-forest"></span></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[12px] mb-1.5"><span class="text-graphite">Chronological</span><span class="font-mono text-ink">36.0</span></div>
+            <div class="meter h-2 rounded-full bg-mist overflow-hidden"><span data-w="45" class="block h-full rounded-full bg-[#C9CBCF]"></span></div>
+          </div>
+        </div>
+
+        <div class="mt-auto pt-6">
+          <div class="rounded-xl bg-sagebg/60 border border-[#D6EADD] px-4 py-3">
+            <p class="text-sagefg text-[13.5px] font-medium">4.6 years younger than your birth date</p>
+            <p class="text-graphite text-[12.5px] mt-0.5">Driven mainly by inflammatory and metabolic proteomic surrogates.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ TABS ══════════ -->
+  <section class="mt-12 sm:mt-16">
+    <div class="border-b border-hairline">
+      <div class="relative flex gap-7 sm:gap-10 overflow-x-auto no-scrollbar" role="tablist" aria-label="Report stages">
+
+        <button class="tab-btn group shrink-0 pb-4 text-left" role="tab" aria-selected="true" aria-controls="panel-1" id="tab-1" data-panel="panel-1">
+          <span class="block font-mono text-[11px] tracking-[0.12em] text-stonefg mb-1">STAGE 01 · THE PAST</span>
+          <span class="block text-[15px] sm:text-[16px] font-medium text-graphite group-[[aria-selected=true]]:text-ink">Exposome history</span>
+        </button>
+
+        <button class="tab-btn group shrink-0 pb-4 text-left" role="tab" aria-selected="false" aria-controls="panel-2" id="tab-2" data-panel="panel-2">
+          <span class="block font-mono text-[11px] tracking-[0.12em] text-stonefg mb-1">STAGE 02 · THE PRESENT</span>
+          <span class="block text-[15px] sm:text-[16px] font-medium text-graphite group-[[aria-selected=true]]:text-ink">Biological reality</span>
+        </button>
+
+        <button class="tab-btn group shrink-0 pb-4 text-left" role="tab" aria-selected="false" aria-controls="panel-3" id="tab-3" data-panel="panel-3">
+          <span class="block font-mono text-[11px] tracking-[0.12em] text-stonefg mb-1">STAGE 03 · THE FUTURE</span>
+          <span class="block text-[15px] sm:text-[16px] font-medium text-graphite group-[[aria-selected=true]]:text-ink">Action plan</span>
+        </button>
+
+        <span id="tab-indicator" class="absolute bottom-0 left-0 h-[2px] bg-ink w-0"></span>
+      </div>
+    </div>
+
+    <!-- ───── PANEL 1 : EXPOSOME ───── -->
+    <div id="panel-1" class="panel active pt-8" role="tabpanel" aria-labelledby="tab-1">
+      <div class="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <p class="text-graphite text-[14.5px] max-w-2xl leading-relaxed">
+          Methylation patterns that track exposures already recorded in your tissue. These are research
+          associations, not diagnoses — each is labelled by how much evidence supports it.
+        </p>
+        <div class="flex items-center gap-2 shrink-0" id="tierFilter">
+          <button data-tier="all" class="filter-chip rounded-full border border-ink bg-ink text-canvas px-3 py-1.5 text-[12.5px] font-medium transition">All 6</button>
+          <button data-tier="robust" class="filter-chip rounded-full border border-hairline bg-white text-graphite px-3 py-1.5 text-[12.5px] font-medium hover:border-graphite transition">Robust</button>
+          <button data-tier="speculative" class="filter-chip rounded-full border border-hairline bg-white text-graphite px-3 py-1.5 text-[12.5px] font-medium hover:border-graphite transition">Speculative</button>
+        </div>
+      </div>
+
+      <div class="space-y-3" id="findingList">
+
+        <!-- finding -->
+        <article class="acc bg-white border border-hairline rounded-2xl shadow-card overflow-hidden" data-tier="robust">
+          <button class="acc-head w-full text-left px-5 sm:px-6 py-5 flex items-start gap-4">
+            <span class="mt-0.5 w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0"><i data-lucide="brain" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <span class="flex-1 min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-ink text-[15.5px] font-medium">Chronic stress signature</span>
+                <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold">Robust</span>
+              </span>
+              <span class="block text-graphite text-[13.5px] mt-1">Hypomethylation across the <span class="font-mono">NR3C1</span> promoter and <span class="font-mono">FKBP5</span> intron 7</span>
+            </span>
+            <span class="text-right shrink-0 hidden sm:block">
+              <span class="block font-mono text-ink text-[15px]">+2.4σ</span>
+              <span class="block text-[11px] text-stonefg mt-0.5">vs. cohort</span>
+            </span>
+            <i data-lucide="chevron-down" class="chev w-4.5 h-4.5 text-stonefg mt-2 shrink-0"></i>
+          </button>
+          <div class="acc-body"><div class="acc-inner">
+            <div class="px-5 sm:px-6 pb-6 pt-1 border-t border-hairline mt-1">
+              <div class="grid md:grid-cols-3 gap-6 pt-5">
+                <div class="md:col-span-2 space-y-3">
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What was read.</span> Reduced methylation at glucocorticoid-receptor
+                    regulatory regions is repeatedly associated with sustained cortisol signalling. In cohort studies this
+                    pattern appears after prolonged psychosocial load and tends to partially reverse when the load lifts.
+                  </p>
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What it is not.</span> This marker does not date the exposure, measure
+                    current cortisol, or predict a psychiatric outcome. Treat it as a signal to discuss, not a finding to act on alone.
+                  </p>
+                </div>
+                <div class="rounded-xl bg-canvas border border-hairline p-4 space-y-3">
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">CpG sites</p><p class="font-mono text-ink text-[13px] mt-1">cg17860381 · cg20241083 · cg03546163</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Tissue validity</p><p class="text-sagefg text-[13px] mt-1 font-medium">Valid for whole blood</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Replication</p><p class="text-graphite text-[13px] mt-1">14 independent cohorts</p></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </article>
+
+        <article class="acc bg-white border border-hairline rounded-2xl shadow-card overflow-hidden" data-tier="robust">
+          <button class="acc-head w-full text-left px-5 sm:px-6 py-5 flex items-start gap-4">
+            <span class="mt-0.5 w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0"><i data-lucide="wind" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <span class="flex-1 min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-ink text-[15.5px] font-medium">Tobacco smoke exposure</span>
+                <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold">Robust</span>
+              </span>
+              <span class="block text-graphite text-[13.5px] mt-1">Partial remethylation at <span class="font-mono">AHRR cg05575921</span> — pattern consistent with past, not current, exposure</span>
+            </span>
+            <span class="text-right shrink-0 hidden sm:block">
+              <span class="block font-mono text-ink text-[15px]">0.71β</span>
+              <span class="block text-[11px] text-stonefg mt-0.5">never-smoker ≈ 0.85</span>
+            </span>
+            <i data-lucide="chevron-down" class="chev w-4.5 h-4.5 text-stonefg mt-2 shrink-0"></i>
+          </button>
+          <div class="acc-body"><div class="acc-inner">
+            <div class="px-5 sm:px-6 pb-6 pt-1 border-t border-hairline mt-1">
+              <div class="grid md:grid-cols-3 gap-6 pt-5">
+                <div class="md:col-span-2 space-y-3">
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What was read.</span> <span class="font-mono">cg05575921</span> is the single
+                    best-replicated smoking marker in the epigenetics literature. Your value sits between the typical
+                    current-smoker and never-smoker distributions, which is the shape seen years after cessation.
+                  </p>
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What it is not.</span> Second-hand smoke and some occupational
+                    combustion exposures move this marker too. It cannot distinguish between them.
+                  </p>
+                </div>
+                <div class="rounded-xl bg-canvas border border-hairline p-4 space-y-3">
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">CpG sites</p><p class="font-mono text-ink text-[13px] mt-1">cg05575921 · cg21566642</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Tissue validity</p><p class="text-sagefg text-[13px] mt-1 font-medium">Valid for whole blood</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Replication</p><p class="text-graphite text-[13px] mt-1">40+ cohorts, meta-analysed</p></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </article>
+
+        <article class="acc bg-white border border-hairline rounded-2xl shadow-card overflow-hidden" data-tier="speculative">
+          <button class="acc-head w-full text-left px-5 sm:px-6 py-5 flex items-start gap-4">
+            <span class="mt-0.5 w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0"><i data-lucide="moon" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <span class="flex-1 min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-ink text-[15.5px] font-medium">Circadian disruption</span>
+                <span class="rounded-full bg-amberbg text-amberfg px-2 py-0.5 text-[11px] font-semibold">Speculative</span>
+              </span>
+              <span class="block text-graphite text-[13.5px] mt-1">Shifted methylation across <span class="font-mono">CLOCK</span>, <span class="font-mono">PER2</span> and <span class="font-mono">ARNTL</span> regulatory regions</span>
+            </span>
+            <span class="text-right shrink-0 hidden sm:block">
+              <span class="block font-mono text-ink text-[15px]">+1.1σ</span>
+              <span class="block text-[11px] text-stonefg mt-0.5">vs. cohort</span>
+            </span>
+            <i data-lucide="chevron-down" class="chev w-4.5 h-4.5 text-stonefg mt-2 shrink-0"></i>
+          </button>
+          <div class="acc-body"><div class="acc-inner">
+            <div class="px-5 sm:px-6 pb-6 pt-1 border-t border-hairline mt-1">
+              <div class="grid md:grid-cols-3 gap-6 pt-5">
+                <div class="md:col-span-2 space-y-3">
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What was read.</span> Core clock-gene methylation differs between
+                    night-shift and day-shift workers in several small studies. Your profile leans toward the shifted pattern.
+                  </p>
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">Why this is speculative.</span> Sample sizes are under 400 in most
+                    published work, effect sizes are small, and the direction of the association has not been consistent
+                    across cohorts. This is a hypothesis about your history, not a measurement of it.
+                  </p>
+                </div>
+                <div class="rounded-xl bg-canvas border border-hairline p-4 space-y-3">
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">CpG sites</p><p class="font-mono text-ink text-[13px] mt-1">cg09649689 · cg16232979 · cg11761638</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Tissue validity</p><p class="text-sagefg text-[13px] mt-1 font-medium">Valid for whole blood</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Replication</p><p class="text-amberfg text-[13px] mt-1">3 cohorts, mixed direction</p></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </article>
+
+        <article class="acc bg-white border border-hairline rounded-2xl shadow-card overflow-hidden" data-tier="robust">
+          <button class="acc-head w-full text-left px-5 sm:px-6 py-5 flex items-start gap-4">
+            <span class="mt-0.5 w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0"><i data-lucide="wine" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <span class="flex-1 min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-ink text-[15.5px] font-medium">Cumulative alcohol exposure</span>
+                <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold">Robust</span>
+              </span>
+              <span class="block text-graphite text-[13.5px] mt-1">Methylation index at <span class="font-mono">SLC7A11 cg06690548</span> sits in the light-to-moderate band</span>
+            </span>
+            <span class="text-right shrink-0 hidden sm:block">
+              <span class="block font-mono text-ink text-[15px]">0.86β</span>
+              <span class="block text-[11px] text-stonefg mt-0.5">light-moderate</span>
+            </span>
+            <i data-lucide="chevron-down" class="chev w-4.5 h-4.5 text-stonefg mt-2 shrink-0"></i>
+          </button>
+          <div class="acc-body"><div class="acc-inner">
+            <div class="px-5 sm:px-6 pb-6 pt-1 border-t border-hairline mt-1">
+              <div class="grid md:grid-cols-3 gap-6 pt-5">
+                <div class="md:col-span-2 space-y-3">
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What was read.</span> <span class="font-mono">cg06690548</span> tracks
+                    cumulative intake dose-dependently and shifts within months of a change in drinking pattern, which makes it
+                    one of the more responsive exposure markers on the array.
+                  </p>
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What it is not.</span> The marker reflects a recent window, roughly the
+                    last one to two years. It says nothing about intake before that.
+                  </p>
+                </div>
+                <div class="rounded-xl bg-canvas border border-hairline p-4 space-y-3">
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">CpG sites</p><p class="font-mono text-ink text-[13px] mt-1">cg06690548</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Tissue validity</p><p class="text-sagefg text-[13px] mt-1 font-medium">Valid for whole blood</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Replication</p><p class="text-graphite text-[13px] mt-1">11 cohorts</p></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </article>
+
+        <article class="acc bg-white border border-hairline rounded-2xl shadow-card overflow-hidden" data-tier="speculative">
+          <button class="acc-head w-full text-left px-5 sm:px-6 py-5 flex items-start gap-4">
+            <span class="mt-0.5 w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0"><i data-lucide="factory" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <span class="flex-1 min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-ink text-[15.5px] font-medium">Particulate air pollution (PM2.5)</span>
+                <span class="rounded-full bg-amberbg text-amberfg px-2 py-0.5 text-[11px] font-semibold">Speculative</span>
+              </span>
+              <span class="block text-graphite text-[13.5px] mt-1">Composite of 19 sites associated with long-term residential PM2.5 load</span>
+            </span>
+            <span class="text-right shrink-0 hidden sm:block">
+              <span class="block font-mono text-ink text-[15px]">+0.7σ</span>
+              <span class="block text-[11px] text-stonefg mt-0.5">vs. cohort</span>
+            </span>
+            <i data-lucide="chevron-down" class="chev w-4.5 h-4.5 text-stonefg mt-2 shrink-0"></i>
+          </button>
+          <div class="acc-body"><div class="acc-inner">
+            <div class="px-5 sm:px-6 pb-6 pt-1 border-t border-hairline mt-1">
+              <div class="grid md:grid-cols-3 gap-6 pt-5">
+                <div class="md:col-span-2 space-y-3">
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What was read.</span> A composite score built from studies linking
+                    modelled residential PM2.5 to blood methylation. Your score is modestly above the cohort mean.
+                  </p>
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">Why this is speculative.</span> The underlying exposure was estimated
+                    from home address, not measured on the person. Composite scores built this way carry the error of the
+                    exposure model as well as the array.
+                  </p>
+                </div>
+                <div class="rounded-xl bg-canvas border border-hairline p-4 space-y-3">
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">CpG sites</p><p class="font-mono text-ink text-[13px] mt-1">19-site composite</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Tissue validity</p><p class="text-sagefg text-[13px] mt-1 font-medium">Valid for whole blood</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Replication</p><p class="text-amberfg text-[13px] mt-1">2 cohorts</p></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </article>
+
+        <article class="acc bg-white border border-hairline rounded-2xl shadow-card overflow-hidden" data-tier="speculative">
+          <button class="acc-head w-full text-left px-5 sm:px-6 py-5 flex items-start gap-4">
+            <span class="mt-0.5 w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0"><i data-lucide="hourglass" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <span class="flex-1 min-w-0">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="text-ink text-[15.5px] font-medium">Early-life adversity composite</span>
+                <span class="rounded-full bg-amberbg text-amberfg px-2 py-0.5 text-[11px] font-semibold">Speculative</span>
+              </span>
+              <span class="block text-graphite text-[13.5px] mt-1">No elevation detected — reported for completeness</span>
+            </span>
+            <span class="text-right shrink-0 hidden sm:block">
+              <span class="block font-mono text-ink text-[15px]">−0.2σ</span>
+              <span class="block text-[11px] text-stonefg mt-0.5">vs. cohort</span>
+            </span>
+            <i data-lucide="chevron-down" class="chev w-4.5 h-4.5 text-stonefg mt-2 shrink-0"></i>
+          </button>
+          <div class="acc-body"><div class="acc-inner">
+            <div class="px-5 sm:px-6 pb-6 pt-1 border-t border-hairline mt-1">
+              <div class="grid md:grid-cols-3 gap-6 pt-5">
+                <div class="md:col-span-2 space-y-3">
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">What was read.</span> Nothing above background. We show null results
+                    alongside positive ones so the report cannot be read as a list of problems only.
+                  </p>
+                  <p class="text-graphite text-[14px] leading-relaxed">
+                    <span class="text-ink font-medium">Why this is speculative.</span> Adversity composites are trained on
+                    retrospective self-report in small cohorts. A null result here is weak evidence of absence, and a positive
+                    one would have been weak evidence of presence.
+                  </p>
+                </div>
+                <div class="rounded-xl bg-canvas border border-hairline p-4 space-y-3">
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">CpG sites</p><p class="font-mono text-ink text-[13px] mt-1">7-site composite</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Tissue validity</p><p class="text-sagefg text-[13px] mt-1 font-medium">Valid for whole blood</p></div>
+                  <div><p class="text-[11px] uppercase tracking-[0.1em] text-stonefg">Replication</p><p class="text-amberfg text-[13px] mt-1">2 cohorts, small n</p></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- ───── PANEL 2 : BIOLOGICAL REALITY ───── -->
+    <div id="panel-2" class="panel pt-8" role="tabpanel" aria-labelledby="tab-2">
+      <p class="text-graphite text-[14.5px] max-w-2xl leading-relaxed mb-7">
+        Organ-system estimates derived from tissue-specific methylation clocks. Each is scored against
+        adults of the same chronological age and sex. Systems without a validated blood-based clock are
+        marked rather than given a number.
+      </p>
+
+      <div class="grid lg:grid-cols-3 gap-5">
+
+        <div class="lg:col-span-2 bg-white border border-hairline rounded-2xl shadow-card p-6 sm:p-8">
+          <h3 class="text-ink text-[17px] font-semibold tracking-tight mb-6">Multisystem longevity breakdown</h3>
+
+          <div class="space-y-6">
+            <!-- system -->
+            <div class="sys">
+              <div class="flex items-baseline justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2.5">
+                  <i data-lucide="heart-pulse" class="w-4 h-4 text-graphite"></i>
+                  <span class="text-ink text-[15px] font-medium">Cardiovascular</span>
+                </div>
+                <span class="rounded-full bg-sagebg text-sagefg px-2.5 py-0.5 text-[11.5px] font-semibold">Optimal</span>
+              </div>
+              <div class="meter h-2.5 rounded-full bg-mist overflow-hidden"><span data-w="88" class="block h-full rounded-full bg-forest"></span></div>
+              <p class="text-graphite text-[13px] mt-2">Vascular age estimate 32.1 · lipid-associated CpG panel within reference range</p>
+            </div>
+
+            <div class="sys">
+              <div class="flex items-baseline justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2.5">
+                  <i data-lucide="flame" class="w-4 h-4 text-graphite"></i>
+                  <span class="text-ink text-[15px] font-medium">Metabolic pace</span>
+                </div>
+                <span class="rounded-full bg-amberbg text-amberfg px-2.5 py-0.5 text-[11.5px] font-semibold">Moderate</span>
+              </div>
+              <div class="meter h-2.5 rounded-full bg-mist overflow-hidden"><span data-w="61" class="block h-full rounded-full bg-[#D9A62E]"></span></div>
+              <p class="text-graphite text-[13px] mt-2">Insulin-resistance surrogate above your cohort median — the largest single drag on your pace score</p>
+            </div>
+
+            <div class="sys">
+              <div class="flex items-baseline justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2.5">
+                  <i data-lucide="shield" class="w-4 h-4 text-graphite"></i>
+                  <span class="text-ink text-[15px] font-medium">Immune age</span>
+                </div>
+                <span class="rounded-full bg-sagebg text-sagefg px-2.5 py-0.5 text-[11.5px] font-semibold">Decelerated</span>
+              </div>
+              <div class="meter h-2.5 rounded-full bg-mist overflow-hidden"><span data-w="79" class="block h-full rounded-full bg-forest"></span></div>
+              <p class="text-graphite text-[13px] mt-2">Naive CD8+ fraction in the top quartile · low granulocyte-to-lymphocyte drift</p>
+            </div>
+
+            <div class="sys">
+              <div class="flex items-baseline justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2.5">
+                  <i data-lucide="droplets" class="w-4 h-4 text-graphite"></i>
+                  <span class="text-ink text-[15px] font-medium">Hepatic</span>
+                </div>
+                <span class="rounded-full bg-sagebg text-sagefg px-2.5 py-0.5 text-[11.5px] font-semibold">Optimal</span>
+              </div>
+              <div class="meter h-2.5 rounded-full bg-mist overflow-hidden"><span data-w="84" class="block h-full rounded-full bg-forest"></span></div>
+              <p class="text-graphite text-[13px] mt-2">No elevation in the fatty-liver methylation signature</p>
+            </div>
+
+            <div class="sys">
+              <div class="flex items-baseline justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2.5">
+                  <i data-lucide="activity" class="w-4 h-4 text-graphite"></i>
+                  <span class="text-ink text-[15px] font-medium">Renal</span>
+                </div>
+                <span class="rounded-full bg-amberbg text-amberfg px-2.5 py-0.5 text-[11.5px] font-semibold">Watch</span>
+              </div>
+              <div class="meter h-2.5 rounded-full bg-mist overflow-hidden"><span data-w="68" class="block h-full rounded-full bg-[#D9A62E]"></span></div>
+              <p class="text-graphite text-[13px] mt-2">Mild drift in the eGFR-associated panel · worth a serum creatinine and cystatin C</p>
+            </div>
+
+            <div class="sys opacity-70">
+              <div class="flex items-baseline justify-between gap-3 mb-2">
+                <div class="flex items-center gap-2.5">
+                  <i data-lucide="brain-circuit" class="w-4 h-4 text-stonefg"></i>
+                  <span class="text-graphite text-[15px] font-medium">Neurocognitive</span>
+                </div>
+                <span class="rounded-full bg-stonebg text-stonefg px-2.5 py-0.5 text-[11.5px] font-semibold">Not reported</span>
+              </div>
+              <div class="h-2.5 rounded-full bg-mist overflow-hidden">
+                <span class="block h-full w-full bg-[repeating-linear-gradient(45deg,#E5E7EB_0_6px,#F3F4F6_6px_12px)]"></span>
+              </div>
+              <p class="text-stonefg text-[13px] mt-2">No brain-tissue clock is validated on a blood sample. We show this gap rather than a misleading number.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-5">
+          <div class="bg-white border border-hairline rounded-2xl shadow-card p-6">
+            <p class="text-[11px] uppercase tracking-[0.14em] text-stonefg mb-3">Where to spend effort</p>
+            <p class="text-ink text-[15.5px] leading-relaxed font-medium">Metabolic pace accounts for roughly 60% of the distance between your current score and your best plausible score.</p>
+            <p class="text-graphite text-[13.5px] leading-relaxed mt-3">Cardiovascular and immune systems are already in the top quartile. The tractable gain is metabolic, and Stage 03 is weighted accordingly.</p>
+            <button class="mt-5 w-full rounded-xl bg-ink text-canvas text-[14px] font-medium py-2.5 hover:bg-black transition" data-goto="panel-3">See the action plan</button>
+          </div>
+
+          <div class="bg-white border border-hairline rounded-2xl shadow-card p-6">
+            <p class="text-[11px] uppercase tracking-[0.14em] text-stonefg mb-4">Clock validity for this sample</p>
+            <ul class="space-y-2.5 text-[13.5px]">
+              <li class="flex items-center justify-between"><span class="text-graphite">DunedinPACE</span><span class="text-sagefg font-medium">Valid</span></li>
+              <li class="flex items-center justify-between"><span class="text-graphite">OMICmAge</span><span class="text-sagefg font-medium">Valid</span></li>
+              <li class="flex items-center justify-between"><span class="text-graphite">PhenoAge</span><span class="text-sagefg font-medium">Valid</span></li>
+              <li class="flex items-center justify-between"><span class="text-graphite">GrimAge2</span><span class="text-sagefg font-medium">Valid</span></li>
+              <li class="flex items-center justify-between"><span class="text-stonefg">PedBE (pediatric)</span><span class="text-stonefg font-medium">Not applicable</span></li>
+              <li class="flex items-center justify-between"><span class="text-stonefg">Cortical clock</span><span class="text-stonefg font-medium">Wrong tissue</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───── PANEL 3 : ACTION PLAN ───── -->
+    <div id="panel-3" class="panel pt-8" role="tabpanel" aria-labelledby="tab-3">
+      <div class="flex flex-wrap items-end justify-between gap-4 mb-7">
+        <p class="text-graphite text-[14.5px] max-w-2xl leading-relaxed">
+          Levers that published research links to the markers above, ordered by how much evidence supports
+          them. Build a protocol here, then take it to a clinician who has your full history — nothing on
+          this page is a prescription.
+        </p>
+        <div class="shrink-0 flex items-center gap-2 rounded-full border border-hairline bg-white px-4 py-2 shadow-card">
+          <i data-lucide="clipboard-list" class="w-4 h-4 text-graphite"></i>
+          <span class="text-[13px] text-graphite"><span id="protoCountInline" class="num text-ink font-semibold">0</span> in your protocol</span>
+        </div>
+      </div>
+
+      <!-- Supplements -->
+      <div class="mb-9">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="font-mono text-[11px] tracking-[0.12em] text-stonefg">01</span>
+          <h3 class="text-ink text-[17px] font-semibold tracking-tight">Targeted supplements</h3>
+          <span class="h-px flex-1 bg-hairline"></span>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+
+          <div class="bg-white border border-hairline rounded-2xl shadow-card p-5 flex flex-col">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-ink text-[15.5px] font-medium">GlyNAC</p>
+                <p class="font-mono text-[12.5px] text-stonefg mt-0.5">1,200 mg · twice daily with food</p>
+              </div>
+              <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold shrink-0">Robust</span>
+            </div>
+            <p class="text-graphite text-[13.5px] leading-relaxed mt-3 flex-1">Glycine plus N-acetylcysteine restores glutathione synthesis. Randomised trials in older adults show improved insulin sensitivity and oxidative-stress markers — the metabolic system flagged in Stage 02.</p>
+            <button class="proto mt-4 w-full rounded-xl border border-hairline bg-canvas text-graphite text-[13.5px] font-medium py-2.5 flex items-center justify-center gap-2 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span class="off-label">Add to daily protocol</span><span class="on-label">Saved to protocol</span>
+            </button>
+          </div>
+
+          <div class="bg-white border border-hairline rounded-2xl shadow-card p-5 flex flex-col">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-ink text-[15.5px] font-medium">Omega-3 (EPA + DHA)</p>
+                <p class="font-mono text-[12.5px] text-stonefg mt-0.5">2 g combined · with the largest meal</p>
+              </div>
+              <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold shrink-0">Robust</span>
+            </div>
+            <p class="text-graphite text-[13.5px] leading-relaxed mt-3 flex-1">The DO-HEALTH trial found a small but measurable slowing of epigenetic aging clocks over three years. Effect size is modest; the safety profile is well characterised.</p>
+            <button class="proto mt-4 w-full rounded-xl border border-hairline bg-canvas text-graphite text-[13.5px] font-medium py-2.5 flex items-center justify-center gap-2 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span class="off-label">Add to daily protocol</span><span class="on-label">Saved to protocol</span>
+            </button>
+          </div>
+
+          <div class="bg-white border border-hairline rounded-2xl shadow-card p-5 flex flex-col">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-ink text-[15.5px] font-medium">Vitamin D3 + K2</p>
+                <p class="font-mono text-[12.5px] text-stonefg mt-0.5">2,000 IU + 100 µg · morning</p>
+              </div>
+              <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold shrink-0">Robust</span>
+            </div>
+            <p class="text-graphite text-[13.5px] leading-relaxed mt-3 flex-1">Included in the same trial arm that moved the clock measures. Dose should be set against an actual serum 25-OH-D result rather than assumed.</p>
+            <button class="proto mt-4 w-full rounded-xl border border-hairline bg-canvas text-graphite text-[13.5px] font-medium py-2.5 flex items-center justify-center gap-2 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span class="off-label">Add to daily protocol</span><span class="on-label">Saved to protocol</span>
+            </button>
+          </div>
+
+          <div class="bg-white border border-hairline rounded-2xl shadow-card p-5 flex flex-col">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-ink text-[15.5px] font-medium">Magnesium glycinate</p>
+                <p class="font-mono text-[12.5px] text-stonefg mt-0.5">300–400 mg · 60–90 min before bed</p>
+              </div>
+              <span class="rounded-full bg-amberbg text-amberfg px-2 py-0.5 text-[11px] font-semibold shrink-0">Speculative</span>
+            </div>
+            <p class="text-graphite text-[13.5px] leading-relaxed mt-3 flex-1">Paired with the circadian finding. Sleep-quality evidence is mixed and mostly self-reported; no trial has tested it against a methylation endpoint.</p>
+            <button class="proto mt-4 w-full rounded-xl border border-hairline bg-canvas text-graphite text-[13.5px] font-medium py-2.5 flex items-center justify-center gap-2 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span class="off-label">Add to daily protocol</span><span class="on-label">Saved to protocol</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Circadian & lifestyle -->
+      <div class="mb-9">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="font-mono text-[11px] tracking-[0.12em] text-stonefg">02</span>
+          <h3 class="text-ink text-[17px] font-semibold tracking-tight">Circadian &amp; lifestyle</h3>
+          <span class="h-px flex-1 bg-hairline"></span>
+        </div>
+
+        <div class="bg-white border border-hairline rounded-2xl shadow-card divide-y divide-hairline">
+
+          <div class="p-5 flex items-start gap-4">
+            <span class="w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0 mt-0.5"><i data-lucide="sunrise" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <div class="flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-ink text-[15px] font-medium">Morning light, within 30 minutes of waking</p>
+                <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold">Robust</span>
+              </div>
+              <p class="text-graphite text-[13.5px] leading-relaxed mt-1">10 minutes outdoors, no sunglasses. The strongest available lever on circadian phase, and the one your clock-gene finding points at.</p>
+            </div>
+            <button class="proto shrink-0 rounded-xl border border-hairline bg-canvas text-graphite text-[13px] font-medium px-3.5 py-2 flex items-center gap-1.5 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i><span class="off-label">Add</span><span class="on-label">Added</span>
+            </button>
+          </div>
+
+          <div class="p-5 flex items-start gap-4">
+            <span class="w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0 mt-0.5"><i data-lucide="utensils" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <div class="flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-ink text-[15px] font-medium">10-hour eating window</p>
+                <span class="rounded-full bg-amberbg text-amberfg px-2 py-0.5 text-[11px] font-semibold">Speculative</span>
+              </div>
+              <p class="text-graphite text-[13.5px] leading-relaxed mt-1">First meal after 8am, last before 6pm. Small trials show improvement in insulin sensitivity; the effect on aging clocks specifically is untested.</p>
+            </div>
+            <button class="proto shrink-0 rounded-xl border border-hairline bg-canvas text-graphite text-[13px] font-medium px-3.5 py-2 flex items-center gap-1.5 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i><span class="off-label">Add</span><span class="on-label">Added</span>
+            </button>
+          </div>
+
+          <div class="p-5 flex items-start gap-4">
+            <span class="w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0 mt-0.5"><i data-lucide="footprints" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <div class="flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-ink text-[15px] font-medium">Zone 2 cardio, 150 minutes weekly</p>
+                <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold">Robust</span>
+              </div>
+              <p class="text-graphite text-[13.5px] leading-relaxed mt-1">Split across four sessions. The best-evidenced intervention on both the metabolic system and pace of aging, and the highest-yield item on this page.</p>
+            </div>
+            <button class="proto shrink-0 rounded-xl border border-hairline bg-canvas text-graphite text-[13px] font-medium px-3.5 py-2 flex items-center gap-1.5 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i><span class="off-label">Add</span><span class="on-label">Added</span>
+            </button>
+          </div>
+
+          <div class="p-5 flex items-start gap-4">
+            <span class="w-9 h-9 rounded-lg bg-mist flex items-center justify-center shrink-0 mt-0.5"><i data-lucide="bed" class="w-4.5 h-4.5 text-graphite"></i></span>
+            <div class="flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-ink text-[15px] font-medium">Fixed wake time, seven days a week</p>
+                <span class="rounded-full bg-sagebg text-sagefg px-2 py-0.5 text-[11px] font-semibold">Robust</span>
+              </div>
+              <p class="text-graphite text-[13.5px] leading-relaxed mt-1">Regularity predicts mortality more strongly than total duration in large cohort data. Hold the wake time even after a short night.</p>
+            </div>
+            <button class="proto shrink-0 rounded-xl border border-hairline bg-canvas text-graphite text-[13px] font-medium px-3.5 py-2 flex items-center gap-1.5 hover:border-graphite transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i><span class="off-label">Add</span><span class="on-label">Added</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Biomarkers -->
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="font-mono text-[11px] tracking-[0.12em] text-stonefg">03</span>
+          <h3 class="text-ink text-[17px] font-semibold tracking-tight">Biomarkers to monitor with your doctor</h3>
+          <span class="h-px flex-1 bg-hairline"></span>
+        </div>
+
+        <div class="bg-white border border-hairline rounded-2xl shadow-card overflow-hidden">
+          <table class="w-full text-[14px]">
+            <thead>
+              <tr class="text-left text-[11px] uppercase tracking-[0.1em] text-stonefg border-b border-hairline">
+                <th class="font-medium px-5 py-3">Marker</th>
+                <th class="font-medium px-5 py-3 hidden sm:table-cell">Why it's on your list</th>
+                <th class="font-medium px-5 py-3">Recheck</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-hairline">
+              <tr>
+                <td class="px-5 py-4 text-ink font-medium">hs-CRP</td>
+                <td class="px-5 py-4 text-graphite hidden sm:table-cell">Ground truth for the inflammatory surrogates driving your OMICmAge estimate</td>
+                <td class="px-5 py-4 text-graphite font-mono text-[13px]">3 months</td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 text-ink font-medium">Fasting insulin + glucose</td>
+                <td class="px-5 py-4 text-graphite hidden sm:table-cell">Directly tests the metabolic pace finding; compute HOMA-IR from the pair</td>
+                <td class="px-5 py-4 text-graphite font-mono text-[13px]">3 months</td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 text-ink font-medium">ApoB</td>
+                <td class="px-5 py-4 text-graphite hidden sm:table-cell">A better cardiovascular risk read than a standard lipid panel alone</td>
+                <td class="px-5 py-4 text-graphite font-mono text-[13px]">6 months</td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 text-ink font-medium">Cystatin C + creatinine</td>
+                <td class="px-5 py-4 text-graphite hidden sm:table-cell">Follows up the renal drift flagged in Stage 02</td>
+                <td class="px-5 py-4 text-graphite font-mono text-[13px]">3 months</td>
+              </tr>
+              <tr>
+                <td class="px-5 py-4 text-ink font-medium">Serum 25-OH vitamin D</td>
+                <td class="px-5 py-4 text-graphite hidden sm:table-cell">Set the D3 dose from a real number instead of a default</td>
+                <td class="px-5 py-4 text-graphite font-mono text-[13px]">Before starting</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-5 rounded-2xl border border-hairline bg-white shadow-card p-5 flex items-start gap-3">
+          <i data-lucide="stethoscope" class="w-4.5 h-4.5 text-graphite shrink-0 mt-0.5"></i>
+          <p class="text-graphite text-[13.5px] leading-relaxed">
+            <span class="text-ink font-medium">Bring this list, not the conclusions.</span> Your clinician can order these,
+            read them against your history and medications, and tell you which of the levers above are worth your time.
+            Cellscript Bio cannot.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ DISCLAIMER ══════════ -->
+  <footer class="mt-16 pt-8 border-t border-hairline">
+    <p class="text-[11px] uppercase tracking-[0.14em] text-stonefg mb-3">How to read this report</p>
+    <p class="text-graphite text-[13.5px] leading-relaxed max-w-3xl">
+      <span class="text-ink font-semibold">This is not medical advice.</span> Cellscript Bio reports research
+      associations for the methylation markers found in your sample, labelled by how much evidence supports each one.
+      It is not a medical device and does not diagnose, treat, or predict disease. A <span class="text-sagefg font-medium">Robust</span>
+      label means an association has replicated across independent cohorts; <span class="text-amberfg font-medium">Speculative</span>
+      means it rests on small or inconsistent studies and may not hold. Clocks are only reported for the tissue they were
+      trained on. Your file is processed on our servers, is not shared with any third party, and is deleted after processing.
+    </p>
+    <p class="text-stonefg text-[12.5px] mt-4">Report 4f2a9c81 · generated 25 Jul 2026 · Cellscript Bio</p>
+  </footer>
+</main>
+
+<!-- ══════════ PROTOCOL TRAY ══════════ -->
+<div id="tray" class="fixed bottom-5 inset-x-0 z-50 px-5 pointer-events-none">
+  <div class="max-w-6xl mx-auto flex justify-center">
+    <div class="pointer-events-auto flex items-center gap-4 rounded-full bg-ink text-canvas pl-5 pr-2 py-2 shadow-lift">
+      <span class="flex items-center gap-2.5 text-[13.5px]">
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+        <span><span id="protoCount" class="num font-semibold">0</span> items in your protocol</span>
+      </span>
+      <button id="trayBtn" class="rounded-full bg-canvas text-ink text-[13px] font-semibold px-4 py-1.5 hover:bg-white transition">Review protocol</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- icons ---------- */
+  if (window.lucide) lucide.createIcons();
+
+  /* ---------- tabs ---------- */
+  const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+  const indicator = document.getElementById('tab-indicator');
+
+  function moveIndicator(btn) {
+    indicator.style.width = btn.offsetWidth + 'px';
+    indicator.style.transform = 'translateX(' + btn.offsetLeft + 'px)';
+  }
+
+  function selectTab(btn) {
+    tabs.forEach(t => t.setAttribute('aria-selected', String(t === btn)));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(btn.dataset.panel).classList.add('active');
+    moveIndicator(btn);
+    runMeters();
+  }
+
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => selectTab(btn));
+    btn.addEventListener('keydown', e => {
+      const i = tabs.indexOf(btn);
+      if (e.key === 'ArrowRight') { tabs[(i + 1) % tabs.length].focus(); tabs[(i + 1) % tabs.length].click(); }
+      if (e.key === 'ArrowLeft')  { tabs[(i - 1 + tabs.length) % tabs.length].focus(); tabs[(i - 1 + tabs.length) % tabs.length].click(); }
+    });
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(b => {
+    b.addEventListener('click', () => {
+      const target = tabs.find(t => t.dataset.panel === b.dataset.goto);
+      if (target) { selectTab(target); target.scrollIntoView({ block: 'start' }); }
+    });
+  });
+
+  window.addEventListener('resize', () => {
+    const active = tabs.find(t => t.getAttribute('aria-selected') === 'true');
+    if (active) moveIndicator(active);
+  });
+
+  /* ---------- accordions ---------- */
+  document.querySelectorAll('.acc-head').forEach(head => {
+    head.addEventListener('click', () => head.closest('.acc').classList.toggle('open'));
+  });
+
+  /* ---------- evidence filter ---------- */
+  const chips = document.querySelectorAll('.filter-chip');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      chips.forEach(c => c.className = 'filter-chip rounded-full border border-hairline bg-white text-graphite px-3 py-1.5 text-[12.5px] font-medium hover:border-graphite transition');
+      chip.className = 'filter-chip rounded-full border border-ink bg-ink text-canvas px-3 py-1.5 text-[12.5px] font-medium transition';
+      const tier = chip.dataset.tier;
+      document.querySelectorAll('#findingList .acc').forEach(card => {
+        const show = tier === 'all' || card.dataset.tier === tier;
+        card.style.display = show ? '' : 'none';
+        if (!show) card.classList.remove('open');
+      });
+    });
+  });
+
+  /* ---------- protocol toggles ---------- */
+  const tray = document.getElementById('tray');
+  const countEls = [document.getElementById('protoCount'), document.getElementById('protoCountInline')];
+
+  function refreshCount() {
+    const n = document.querySelectorAll('.proto.on').length;
+    countEls.forEach(el => el && (el.textContent = n));
+    tray.classList.toggle('up', n > 0);
+  }
+
+  document.querySelectorAll('.proto').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('on');
+      const icon = btn.querySelector('i[data-lucide], svg');
+      if (icon) {
+        icon.outerHTML = '<i data-lucide="' + (btn.classList.contains('on') ? 'check' : 'plus') +
+                         '" class="' + icon.getAttribute('class') + '"></i>';
+        if (window.lucide) lucide.createIcons();
+      }
+      refreshCount();
+    });
+  });
+
+  document.getElementById('trayBtn').addEventListener('click', () => {
+    const t = tabs.find(x => x.dataset.panel === 'panel-3');
+    if (t) selectTab(t);
+    document.getElementById('panel-3').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  });
+
+  /* ---------- meters ---------- */
+  function runMeters() {
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.meter > span[data-w]').forEach(bar => {
+        const panel = bar.closest('.panel');
+        if (panel && !panel.classList.contains('active')) return;
+        bar.style.width = bar.dataset.w + '%';
+      });
+    });
+  }
+
+  /* ---------- count-up ---------- */
+  function countUp(el, to, decimals, ms) {
+    if (reduce) { el.textContent = to.toFixed(decimals); return; }
+    const start = performance.now();
+    (function step(now) {
+      const p = Math.min((now - start) / ms, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = (to * eased).toFixed(decimals);
+      if (p < 1) requestAnimationFrame(step);
+    })(start);
+  }
+
+  /* ---------- gauge ---------- */
+  const PACE = 0.82, LO = 0.6, HI = 1.4, ARC = 377;
+  window.addEventListener('load', () => {
+    const t = Math.max(0, Math.min(1, (PACE - LO) / (HI - LO)));
+    const arc = document.getElementById('paceArc');
+    const needle = document.getElementById('paceNeedle');
+    if (arc) arc.style.strokeDashoffset = String(ARC * (1 - t));
+    if (needle) needle.style.transform = 'rotate(' + (t * 180 - 90) + 'deg)';
+    countUp(document.getElementById('paceValue'), PACE, 2, 1500);
+    countUp(document.getElementById('bioAge'), 31.4, 1, 1500);
+    runMeters();
+    const active = tabs.find(x => x.getAttribute('aria-selected') === 'true');
+    if (active) moveIndicator(active);
+  });
+
+  // indicator needs a first position before fonts settle
+  moveIndicator(tabs[0]);
+  document.fonts && document.fonts.ready.then(() => moveIndicator(
+    tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0]));
+})();
+</script>
+</body>
+</html>
